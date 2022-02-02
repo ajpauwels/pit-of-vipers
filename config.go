@@ -1,9 +1,10 @@
 package config
 
 import (
+	"sync"
+
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
-	"sync"
 )
 
 /// ViperPit stores many viper instances and merges them into one
@@ -70,7 +71,7 @@ func New(vipers []*viper.Viper) (viperChannel chan *viper.Viper, errChannel chan
 		// Ingest config
 		err := v.ReadInConfig()
 		if err != nil {
-			errChannel <- err
+			go func() { errChannel <- err }()
 		} else {
 			base.MergeConfigMap(v.AllSettings())
 
@@ -100,7 +101,7 @@ func New(vipers []*viper.Viper) (viperChannel chan *viper.Viper, errChannel chan
 						if pit.configs[i] != nil {
 							err := sumViper.MergeConfigMap(pit.configs[i])
 							if err != nil {
-								errChannel <- err
+								go func() { errChannel <- err }()
 							}
 						}
 					}
@@ -109,14 +110,14 @@ func New(vipers []*viper.Viper) (viperChannel chan *viper.Viper, errChannel chan
 					// existing config
 					err := base.MergeConfigMap(sumViper.AllSettings())
 					if err != nil {
-						errChannel <- err
+						go func() { errChannel <- err }()
 					} else {
 						// Copy the newly computed config and send it
 						// over the channel
 						returnedViper := viper.New()
 						err := returnedViper.MergeConfigMap(base.AllSettings())
 						if err != nil {
-							errChannel <- err
+							go func() { errChannel <- err }()
 						} else {
 							returnedViper.AutomaticEnv()
 							viperChannel <- returnedViper
@@ -135,7 +136,7 @@ func New(vipers []*viper.Viper) (viperChannel chan *viper.Viper, errChannel chan
 		returnedViper := viper.New()
 		err := returnedViper.MergeConfigMap(base.AllSettings())
 		if err != nil {
-			errChannel <- err
+			go func() { errChannel <- err }()
 		} else {
 			returnedViper.AutomaticEnv()
 			viperChannel <- returnedViper
