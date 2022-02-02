@@ -66,81 +66,83 @@ func New(vipers []*viper.Viper) (viperChannel chan *viper.Viper, errChannel chan
 	viperChannel = make(chan *viper.Viper)
 	errChannel = make(chan error)
 
-	// Read and setup each config
-	for i, v := range vipers {
-		// Ingest config
-		err := v.ReadInConfig()
-		if err != nil {
-			go func() { errChannel <- err }()
-		} else {
-			base.MergeConfigMap(v.AllSettings())
+	// Run setup in a separate goroutine and return channels immediately
+	go func() {
+		// Read and setup each config
+		for i, v := range vipers {
+			// Ingest config
+			err := v.ReadInConfig()
+			if err != nil {
+				errChannel <- err
+			} else {
+				base.MergeConfigMap(v.AllSettings())
 
-			// If the config file changes, atomically update the shared
-			// config state for that config instance and notify the
-			// channel
-			viperIndex := i
-			v.OnConfigChange(func(in fsnotify.Event) {
-				// Lock access the configs slice
-				pit.rwConfigs.Lock()
-				defer pit.rwConfigs.Unlock()
+				// If the config file changes, atomically update the shared
+				// config state for that config instance and notify the
+				// channel
+				viperIndex := i
+				v.OnConfigChange(func(in fsnotify.Event) {
+					// Lock access the configs slice
+					pit.rwConfigs.Lock()
+					defer pit.rwConfigs.Unlock()
 
-				// Fetch the viper that was updated
-				v := pit.vipers[viperIndex]
+					// Fetch the viper that was updated
+					v := pit.vipers[viperIndex]
 
-				// If the viper is non-nil, re-compute config
-				if v != nil {
-					// Fetch the viper's config set
-					pit.configs[viperIndex] = v.AllSettings()
+					// If the viper is non-nil, re-compute config
+					if v != nil {
+						// Fetch the viper's config set
+						pit.configs[viperIndex] = v.AllSettings()
 
-					// Create a temporary viper instance that will
-					// store the updated config computation
-					sumViper := viper.New()
+						// Create a temporary viper instance that will
+						// store the updated config computation
+						sumViper := viper.New()
 
-					// Compute config into sumViper
-					for i := 0; i < len(pit.configs); i++ {
-						if pit.configs[i] != nil {
-							err := sumViper.MergeConfigMap(pit.configs[i])
+						// Compute config into sumViper
+						for i := 0; i < len(pit.configs); i++ {
+							if pit.configs[i] != nil {
+								err := sumViper.MergeConfigMap(pit.configs[i])
+								if err != nil {
+									errChannel <- err
+								}
+							}
+						}
+
+						// Merge the newly computed config with the
+						// existing config
+						err := base.MergeConfigMap(sumViper.AllSettings())
+						if err != nil {
+							errChannel <- err
+						} else {
+							// Copy the newly computed config and send it
+							// over the channel
+							returnedViper := viper.New()
+							err := returnedViper.MergeConfigMap(base.AllSettings())
 							if err != nil {
-								go func() { errChannel <- err }()
+								errChannel <- err
+							} else {
+								returnedViper.AutomaticEnv()
+								viperChannel <- returnedViper
 							}
 						}
 					}
+				})
 
-					// Merge the newly computed config with the
-					// existing config
-					err := base.MergeConfigMap(sumViper.AllSettings())
-					if err != nil {
-						go func() { errChannel <- err }()
-					} else {
-						// Copy the newly computed config and send it
-						// over the channel
-						returnedViper := viper.New()
-						err := returnedViper.MergeConfigMap(base.AllSettings())
-						if err != nil {
-							go func() { errChannel <- err }()
-						} else {
-							returnedViper.AutomaticEnv()
-							viperChannel <- returnedViper
-						}
-					}
-				}
-			})
-
-			// Activate configuration file watching
-			defer v.WatchConfig()
+				// Activate configuration file watching
+				defer v.WatchConfig()
+			}
 		}
-	}
 
-	// Pass first completed set of configuration to consuming app
-	go func() {
+		// Pass first completed set of configuration to consuming app
 		returnedViper := viper.New()
 		err := returnedViper.MergeConfigMap(base.AllSettings())
 		if err != nil {
-			go func() { errChannel <- err }()
+			errChannel <- err
 		} else {
 			returnedViper.AutomaticEnv()
 			viperChannel <- returnedViper
 		}
+
 	}()
 
 	return
