@@ -72,8 +72,15 @@ func New(vipers []*viper.Viper) (viperChannel chan *viper.Viper, errChannel chan
 		for i, v := range vipers {
 			// Ingest config
 			err := v.ReadInConfig()
+
+			// Do not forward NotFound errors, configs are optional
 			if err != nil {
-				errChannel <- err
+				switch err.(type) {
+				case viper.ConfigFileNotFoundError:
+					continue
+				default:
+					errChannel <- err
+				}
 			} else {
 				base.MergeConfigMap(v.AllSettings())
 
