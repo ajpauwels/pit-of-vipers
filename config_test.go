@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,7 +12,7 @@ import (
 )
 
 func setupTestDir(t *testing.T, testName string) string {
-	dir, err := ioutil.TempDir("testdata", testName)
+	dir, err := os.MkdirTemp("", testName)
 
 	if err != nil {
 		t.Error(err)
@@ -22,7 +21,7 @@ func setupTestDir(t *testing.T, testName string) string {
 }
 
 func writeToFiles(t *testing.T, dir string, num, base int) {
-	for i := 0; i < 3; i++ {
+	for i := 0; i < num; i++ {
 		fileName := filepath.Join(dir, fmt.Sprintf("%d.yaml", i))
 		fo, err := os.Create(fileName)
 		if err != nil {
