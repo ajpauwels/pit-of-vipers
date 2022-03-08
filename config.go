@@ -1,6 +1,7 @@
 package config
 
 import (
+	"path/filepath"
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
@@ -47,6 +48,30 @@ func NewFromPaths(paths []string) (viperChannel chan *viper.Viper, errChannel ch
 		v.AddConfigPath(path)
 		v.SetConfigName("config")
 		vipers[i] = v
+	}
+
+	return New(vipers)
+}
+
+/// NewFromPathsAndGlob takes as input an array of paths and a glob creates a
+/// ViperPit that monitors each available file matching the glob pattern at those
+/// paths.
+func NewFromPathsAndGlob(paths []string, glob string) (viperChannel chan *viper.Viper, errChannel chan error) {
+	// Make the array that'll store all our viper instances
+	var vipers []*viper.Viper
+
+	// Each viper instance looks at the given path for a file named
+	// config with any supported extension
+	for _, path := range paths {
+		matches, err := filepath.Glob(filepath.Join(path, glob))
+		if err != nil {
+			continue
+		}
+		for _, m := range matches {
+			v := viper.New()
+			v.SetConfigFile(m)
+			vipers = append(vipers, v)
+		}
 	}
 
 	return New(vipers)
