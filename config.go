@@ -15,10 +15,25 @@ type ViperPit struct {
 	configs   []map[string]interface{}
 }
 
+type Options struct {
+	base   *viper.Viper
+	vipers []*viper.Viper
+}
+
+type Option func(*Options)
+
+func OptionUseBaseViper(base *viper.Viper) Option {
+	return func(o *Options) {
+		if base != nil {
+			o.base.MergeConfigMap(base.AllSettings())
+		}
+	}
+}
+
 /// NewFromPathsAndName takes as input an array of paths and the name
 /// of the config file (without extension) potentially stored at those
 /// paths and creates a ViperPit that monitors each available config.
-func NewFromPathsAndName(paths []string, name string) (viperChannel chan *viper.Viper, errChannel chan error) {
+func NewFromPathsAndName(paths []string, name string, options ...Option) (viperChannel chan *viper.Viper, errChannel chan error) {
 	// Make the array that'll store all our viper instances
 	vipers := make([]*viper.Viper, len(paths))
 
@@ -31,13 +46,13 @@ func NewFromPathsAndName(paths []string, name string) (viperChannel chan *viper.
 		vipers[i] = v
 	}
 
-	return New(vipers)
+	return New(vipers, options...)
 }
 
 /// NewFromPaths takes as input an array of paths and creates a
 /// ViperPit that monitors each available file named config.* at those
 /// paths.
-func NewFromPaths(paths []string) (viperChannel chan *viper.Viper, errChannel chan error) {
+func NewFromPaths(paths []string, options ...Option) (viperChannel chan *viper.Viper, errChannel chan error) {
 	// Make the array that'll store all our viper instances
 	vipers := make([]*viper.Viper, len(paths))
 
@@ -50,13 +65,13 @@ func NewFromPaths(paths []string) (viperChannel chan *viper.Viper, errChannel ch
 		vipers[i] = v
 	}
 
-	return New(vipers)
+	return New(vipers, options...)
 }
 
 /// NewFromPathsAndGlob takes as input an array of paths and a glob creates a
 /// ViperPit that monitors each available file matching the glob pattern at those
 /// paths.
-func NewFromPathsAndGlob(paths []string, glob string) (viperChannel chan *viper.Viper, errChannel chan error) {
+func NewFromPathsAndGlob(paths []string, glob string, options ...Option) (viperChannel chan *viper.Viper, errChannel chan error) {
 	// Make the array that'll store all our viper instances
 	var vipers []*viper.Viper
 
@@ -74,16 +89,23 @@ func NewFromPathsAndGlob(paths []string, glob string) (viperChannel chan *viper.
 		}
 	}
 
-	return New(vipers)
+	return New(vipers, options...)
 }
 
 /// NewFromPaths takes as input an array of vipers and creates a
 /// ViperPit that monitors and merges and each one
-func New(vipers []*viper.Viper) (viperChannel chan *viper.Viper, errChannel chan error) {
+func New(vipers []*viper.Viper, options ...Option) (viperChannel chan *viper.Viper, errChannel chan error) {
 	// Initialize our viper pit
-	base := viper.New()
+	opts := Options{
+		base:   viper.New(), // an empty base
+		vipers: vipers,
+	}
+	for _, ops := range options {
+		ops(&opts)
+	}
+
 	pit := &ViperPit{
-		vipers:  vipers,
+		vipers:  opts.vipers,
 		configs: make([]map[string]interface{}, len(vipers)),
 	}
 
@@ -107,7 +129,7 @@ func New(vipers []*viper.Viper) (viperChannel chan *viper.Viper, errChannel chan
 					errChannel <- err
 				}
 			} else {
-				base.MergeConfigMap(v.AllSettings())
+				opts.base.MergeConfigMap(v.AllSettings())
 
 				// If the config file changes, atomically update the shared
 				// config state for that config instance and notify the
@@ -142,14 +164,14 @@ func New(vipers []*viper.Viper) (viperChannel chan *viper.Viper, errChannel chan
 
 						// Merge the newly computed config with the
 						// existing config
-						err := base.MergeConfigMap(sumViper.AllSettings())
+						err := opts.base.MergeConfigMap(sumViper.AllSettings())
 						if err != nil {
 							errChannel <- err
 						} else {
 							// Copy the newly computed config and send it
 							// over the channel
 							returnedViper := viper.New()
-							err := returnedViper.MergeConfigMap(base.AllSettings())
+							err := returnedViper.MergeConfigMap(opts.base.AllSettings())
 							if err != nil {
 								errChannel <- err
 							} else {
@@ -167,7 +189,7 @@ func New(vipers []*viper.Viper) (viperChannel chan *viper.Viper, errChannel chan
 
 		// Pass first completed set of configuration to consuming app
 		returnedViper := viper.New()
-		err := returnedViper.MergeConfigMap(base.AllSettings())
+		err := returnedViper.MergeConfigMap(opts.base.AllSettings())
 		if err != nil {
 			errChannel <- err
 		} else {
