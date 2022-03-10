@@ -15,10 +15,21 @@ type ViperPit struct {
 	configs   []map[string]interface{}
 }
 
+type Options struct {
+	useBaseViper bool
+	vipers       []*viper.Viper
+}
+
+type Option func(*Options)
+
+func OptionUseBaseViper(o *Options) {
+	o.useBaseViper = true
+}
+
 /// NewFromPathsAndName takes as input an array of paths and the name
 /// of the config file (without extension) potentially stored at those
 /// paths and creates a ViperPit that monitors each available config.
-func NewFromPathsAndName(paths []string, name string) (viperChannel chan *viper.Viper, errChannel chan error) {
+func NewFromPathsAndName(paths []string, name string, options ...Option) (viperChannel chan *viper.Viper, errChannel chan error) {
 	// Make the array that'll store all our viper instances
 	vipers := make([]*viper.Viper, len(paths))
 
@@ -31,13 +42,13 @@ func NewFromPathsAndName(paths []string, name string) (viperChannel chan *viper.
 		vipers[i] = v
 	}
 
-	return New(vipers)
+	return New(vipers, options...)
 }
 
 /// NewFromPaths takes as input an array of paths and creates a
 /// ViperPit that monitors each available file named config.* at those
 /// paths.
-func NewFromPaths(paths []string) (viperChannel chan *viper.Viper, errChannel chan error) {
+func NewFromPaths(paths []string, options ...Option) (viperChannel chan *viper.Viper, errChannel chan error) {
 	// Make the array that'll store all our viper instances
 	vipers := make([]*viper.Viper, len(paths))
 
@@ -50,13 +61,13 @@ func NewFromPaths(paths []string) (viperChannel chan *viper.Viper, errChannel ch
 		vipers[i] = v
 	}
 
-	return New(vipers)
+	return New(vipers, options...)
 }
 
 /// NewFromPathsAndGlob takes as input an array of paths and a glob creates a
 /// ViperPit that monitors each available file matching the glob pattern at those
 /// paths.
-func NewFromPathsAndGlob(paths []string, glob string) (viperChannel chan *viper.Viper, errChannel chan error) {
+func NewFromPathsAndGlob(paths []string, glob string, options ...Option) (viperChannel chan *viper.Viper, errChannel chan error) {
 	// Make the array that'll store all our viper instances
 	var vipers []*viper.Viper
 
@@ -74,16 +85,26 @@ func NewFromPathsAndGlob(paths []string, glob string) (viperChannel chan *viper.
 		}
 	}
 
-	return New(vipers)
+	return New(vipers, options...)
 }
 
 /// NewFromPaths takes as input an array of vipers and creates a
 /// ViperPit that monitors and merges and each one
-func New(vipers []*viper.Viper) (viperChannel chan *viper.Viper, errChannel chan error) {
+func New(vipers []*viper.Viper, options ...Option) (viperChannel chan *viper.Viper, errChannel chan error) {
 	// Initialize our viper pit
+	opts := Options{
+		vipers: vipers,
+	}
+	for _, ops := range options {
+		ops(&opts)
+	}
 	base := viper.New()
+	if opts.useBaseViper {
+		base = viper.GetViper()
+	}
+
 	pit := &ViperPit{
-		vipers:  vipers,
+		vipers:  opts.vipers,
 		configs: make([]map[string]interface{}, len(vipers)),
 	}
 
