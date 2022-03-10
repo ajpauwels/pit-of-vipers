@@ -16,14 +16,18 @@ type ViperPit struct {
 }
 
 type Options struct {
-	useBaseViper bool
-	vipers       []*viper.Viper
+	base   *viper.Viper
+	vipers []*viper.Viper
 }
 
 type Option func(*Options)
 
-func OptionUseBaseViper(o *Options) {
-	o.useBaseViper = true
+func OptionUseBaseViper(base *viper.Viper) Option {
+	return func(o *Options) {
+		if base != nil {
+			o.base.MergeConfigMap(base.AllSettings())
+		}
+	}
 }
 
 /// NewFromPathsAndName takes as input an array of paths and the name
@@ -93,14 +97,11 @@ func NewFromPathsAndGlob(paths []string, glob string, options ...Option) (viperC
 func New(vipers []*viper.Viper, options ...Option) (viperChannel chan *viper.Viper, errChannel chan error) {
 	// Initialize our viper pit
 	opts := Options{
+		base:   viper.New(), // an empty base
 		vipers: vipers,
 	}
 	for _, ops := range options {
 		ops(&opts)
-	}
-	base := viper.New()
-	if opts.useBaseViper {
-		base = viper.GetViper()
 	}
 
 	pit := &ViperPit{
@@ -128,7 +129,7 @@ func New(vipers []*viper.Viper, options ...Option) (viperChannel chan *viper.Vip
 					errChannel <- err
 				}
 			} else {
-				base.MergeConfigMap(v.AllSettings())
+				opts.base.MergeConfigMap(v.AllSettings())
 
 				// If the config file changes, atomically update the shared
 				// config state for that config instance and notify the
@@ -163,14 +164,14 @@ func New(vipers []*viper.Viper, options ...Option) (viperChannel chan *viper.Vip
 
 						// Merge the newly computed config with the
 						// existing config
-						err := base.MergeConfigMap(sumViper.AllSettings())
+						err := opts.base.MergeConfigMap(sumViper.AllSettings())
 						if err != nil {
 							errChannel <- err
 						} else {
 							// Copy the newly computed config and send it
 							// over the channel
 							returnedViper := viper.New()
-							err := returnedViper.MergeConfigMap(base.AllSettings())
+							err := returnedViper.MergeConfigMap(opts.base.AllSettings())
 							if err != nil {
 								errChannel <- err
 							} else {
@@ -188,7 +189,7 @@ func New(vipers []*viper.Viper, options ...Option) (viperChannel chan *viper.Vip
 
 		// Pass first completed set of configuration to consuming app
 		returnedViper := viper.New()
-		err := returnedViper.MergeConfigMap(base.AllSettings())
+		err := returnedViper.MergeConfigMap(opts.base.AllSettings())
 		if err != nil {
 			errChannel <- err
 		} else {

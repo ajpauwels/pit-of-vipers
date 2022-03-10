@@ -147,7 +147,7 @@ func TestWithBaseViper(t *testing.T) {
 	viper.GetViper().SetDefault("val-with-default", 33)
 	viper.GetViper().SetDefault("val-1", 44) // should be overriden
 
-	vpCh, erCh := NewFromPathsAndGlob([]string{dir}, "*.yaml", OptionUseBaseViper)
+	vpCh, erCh := NewFromPathsAndGlob([]string{dir}, "*.yaml", OptionUseBaseViper(viper.GetViper()))
 	if vpCh == nil || erCh == nil {
 		t.Error("NewFromPathsAndGlob")
 	}
